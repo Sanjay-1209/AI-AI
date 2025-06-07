@@ -1,53 +1,51 @@
+# app.py
+
 import streamlit as st
-from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
-import torch
+from transformers import pipeline
 
-# Load model and tokenizer only once
-@st.cache_resource
-def load_model():
-    model_name = "microsoft/phi-2"
-    tokenizer = AutoTokenizer.from_pretrained(model_name)
-    model = AutoModelForCausalLM.from_pretrained(model_name, torch_dtype=torch.float32)
-    generator = pipeline("text-generation", model=model, tokenizer=tokenizer)
-    return generator
+st.title("Two AI Models Talking")
 
-generator = load_model()
+@st.cache_resource(show_spinner=True)
+def load_model(model_name):
+    return pipeline("text-generation", model=model_name)
 
-# UI Settings
-st.set_page_config(page_title="🤖 AI vs AI Chat", layout="wide")
-st.title("🤖 AI vs AI: Let the Agents Talk")
+# Load two different models (you can pick any two, here both GPT-2 for example)
+model1 = load_model("gpt2")
+model2 = load_model("distilgpt2")
 
-# Sidebar Inputs
-st.sidebar.header("Conversation Settings")
-num_turns = st.sidebar.slider("Number of turns", 1, 10, 5)
-max_new_tokens = st.sidebar.slider("Max length per response", 20, 100, 60)
-starting_msg = st.sidebar.text_input("Starting message", "What do you think about the India-Pakistan rivalry?")
+# Function to generate response given prompt and model
+def generate_response(model, prompt):
+    result = model(prompt, max_length=100, num_return_sequences=1)
+    return result[0]['generated_text']
 
-# Conversation Container
-st.subheader("🗣️ Conversation Between Agents")
-conversation = []
+# Initialize chat history in session state
+if "chat_history" not in st.session_state:
+    # Start conversation with a greeting from model1
+    st.session_state.chat_history = [("Model 1", "Hello! How are you today?")]
 
-# Initialize message
-current_input = starting_msg
+st.write("### Conversation between Model 1 and Model 2:")
 
-for i in range(num_turns):
-    # Agent A speaks
-    res_a = generator(current_input, max_new_tokens=max_new_tokens, do_sample=True)[0]['generated_text']
-    res_a_clean = res_a[len(current_input):].strip()
-    conversation.append(("🧠 Agent A", res_a_clean))
+# Display chat history
+for speaker, text in st.session_state.chat_history:
+    st.markdown(f"**{speaker}:** {text}")
 
-    # Agent B replies
-    res_b = generator(res_a, max_new_tokens=max_new_tokens, do_sample=True)[0]['generated_text']
-    res_b_clean = res_b[len(res_a):].strip()
-    conversation.append(("🤖 Agent B", res_b_clean))
+# Button to generate next turn
+if st.button("Generate next turn"):
+    last_speaker, last_text = st.session_state.chat_history[-1]
 
-    current_input = res_b  # Feed last reply to next agent
+    if last_speaker == "Model 1":
+        # Model 2 responds
+        prompt = last_text + "\nModel 2:"
+        response = generate_response(model2, prompt)
+        # Clean response: remove prompt part
+        response = response[len(prompt):].strip()
+        st.session_state.chat_history.append(("Model 2", response))
+    else:
+        # Model 1 responds
+        prompt = last_text + "\nModel 1:"
+        response = generate_response(model1, prompt)
+        response = response[len(prompt):].strip()
+        st.session_state.chat_history.append(("Model 1", response))
 
-# Display Conversation
-for speaker, msg in conversation:
-    st.markdown(f"**{speaker}:** {msg}")
-
-# Transcript section
-with st.expander("📜 Full Conversation Transcript"):
-    for speaker, msg in conversation:
-        st.markdown(f"**{speaker}**: {msg}")
+st.write("---")
+st.write("Click **Generate next turn** to continue the conversation.")
