@@ -1,51 +1,43 @@
-# app.py
-
 import streamlit as st
-from transformers import pipeline
+from transformers import AutoModelForCausalLM, AutoTokenizer, pipeline
 
-st.title("Two AI Models Talking")
+st.set_page_config(page_title="2 AI Bots Chat", layout="wide")
+st.title("🤖 Two Chat AI Models Talking to Each Other")
 
-@st.cache_resource(show_spinner=True)
-def load_model(model_name):
-    return pipeline("text-generation", model=model_name)
+@st.cache_resource(show_spinner="Loading Zephyr model...")
+def load_chatbot():
+    model_name = "HuggingFaceH4/zephyr-7b-beta"
+    tokenizer = AutoTokenizer.from_pretrained(model_name)
+    model = AutoModelForCausalLM.from_pretrained(model_name, device_map="auto")
+    pipe = pipeline("text-generation", model=model, tokenizer=tokenizer)
+    return pipe, tokenizer
 
-# Load two different models (you can pick any two, here both GPT-2 for example)
-model1 = load_model("gpt2")
-model2 = load_model("distilgpt2")
+pipe, tokenizer = load_chatbot()
 
-# Function to generate response given prompt and model
-def generate_response(model, prompt):
-    result = model(prompt, max_length=100, num_return_sequences=1)
-    return result[0]['generated_text']
+def chat_response(pipe, prompt):
+    response = pipe(prompt, max_new_tokens=200, do_sample=True, temperature=0.7)[0]['generated_text']
+    # Strip the prompt part to get only the new reply
+    return response.replace(prompt, "").strip()
 
-# Initialize chat history in session state
-if "chat_history" not in st.session_state:
-    # Start conversation with a greeting from model1
-    st.session_state.chat_history = [("Model 1", "Hello! How are you today?")]
+# Initialize chat
+if "chat" not in st.session_state:
+    st.session_state.chat = [("AI 1", "Hey! How are you today?")]
 
-st.write("### Conversation between Model 1 and Model 2:")
+# Display conversation
+st.write("### 💬 Conversation History")
+for speaker, message in st.session_state.chat:
+    st.markdown(f"**{speaker}:** {message}")
 
-# Display chat history
-for speaker, text in st.session_state.chat_history:
-    st.markdown(f"**{speaker}:** {text}")
-
-# Button to generate next turn
-if st.button("Generate next turn"):
-    last_speaker, last_text = st.session_state.chat_history[-1]
-
-    if last_speaker == "Model 1":
-        # Model 2 responds
-        prompt = last_text + "\nModel 2:"
-        response = generate_response(model2, prompt)
-        # Clean response: remove prompt part
-        response = response[len(prompt):].strip()
-        st.session_state.chat_history.append(("Model 2", response))
+# Generate next turn
+if st.button("🗣️ Generate Next Turn"):
+    last_speaker, last_message = st.session_state.chat[-1]
+    if last_speaker == "AI 1":
+        prompt = f"<|system|>You are AI 2, having a smart conversation with AI 1.\n<|user|>{last_message}\n<|assistant|>"
+        response = chat_response(pipe, prompt)
+        st.session_state.chat.append(("AI 2", response))
     else:
-        # Model 1 responds
-        prompt = last_text + "\nModel 1:"
-        response = generate_response(model1, prompt)
-        response = response[len(prompt):].strip()
-        st.session_state.chat_history.append(("Model 1", response))
+        prompt = f"<|system|>You are AI 1, having a smart conversation with AI 2.\n<|user|>{last_message}\n<|assistant|>"
+        response = chat_response(pipe, prompt)
+        st.session_state.chat.append(("AI 1", response))
 
-st.write("---")
-st.write("Click **Generate next turn** to continue the conversation.")
+st.info("Click **Generate Next Turn** to continue the AI-to-AI conversation.")
